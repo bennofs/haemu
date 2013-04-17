@@ -12,9 +12,34 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
+source-repository head
+  type: git
+  location: git://github.com/bennofs/haemu.git
+
+library
+  exposed-modules:
+      Haemu.Monad
+
+  build-depends:
+      base <5 && >3
+    , mtl
+    , lens
+    , array
+
+  hs-source-dirs:    src
+  default-language:  Haskell2010
+
 executable haemu
-  main-is:            Main,hs
+  main-is:           Main.hs
   -- other-modules:
-  build-depends:       base ==4.6.*
-  hs-source-dirs:      src
-  default-language:    Haskell2010
+  build-depends:     base ==4.6.*
+  hs-source-dirs:    src
+  default-language:  Haskell2010
+
+test-suite haemu-tests
+   type:             exitcode-stdio-1.0
+   main-is:          Tests.hs
+   hs-source-dirs:   tests
+   build-depends:
+       base >3 && <5
+     , haemu
