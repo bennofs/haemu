@@ -84,8 +84,8 @@ main = hspec $ do
         (== s' ^? registers . ix r) $ preview (_2 . registers . ix r) $ runST $
            runHaemuM (readRegister r) s'
 
-    it "throws an exception when register id is out of range" $
-      void $ evaluate (runST $ runHaemuM (readRegister 100) $ initState 1 1) `shouldThrow` anyException
+    it "throws an exception when register id is out of range" $ void $
+      evaluate (runST $ runHaemuM (readRegister 100) $ initState 1 1) `shouldThrow` anyException
 
   describe "Haemu.Monad.writeRegister" $ do
 
@@ -106,5 +106,5 @@ main = hspec $ do
           writeRegister r2 v2
           readRegister r1
 
-    it "should throw when used with a non-existent register" $
-      void $ evaluate (runST $ runHaemuM (writeRegister 100 10) $ initState 3 0) `shouldThrow` anyException
+    it "should throw when used with a non-existent register" $ void $
+      evaluate (runST $ runHaemuM (writeRegister 100 10) $ initState 3 0) `shouldThrow` anyException
