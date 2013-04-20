@@ -19,13 +19,12 @@ source-repository head
 library
   exposed-modules:
       Haemu.Monad
-
   build-depends:
       base <5 && >3
     , mtl
     , lens
-    , array
-
+    , vector
+    , primitive
   hs-source-dirs:    src
   default-language:  Haskell2010
 
@@ -46,6 +45,6 @@ test-suite haemu-tests
      , haemu
      , hspec
      , lens
-     , array
-     , QuickCheck < 2.6
+     , vector
+     , QuickCheck
    default-language: Haskell2010

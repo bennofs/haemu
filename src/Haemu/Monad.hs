@@ -4,27 +4,30 @@
 {-# LANGUAGE TemplateHaskell       #-}
 module Haemu.Monad
   (
-  -- * Running Haemu actions
+  -- * Types
     HaemuM
-  , runHaemuM
   , HaemuState(..)
+  , ImmutableHaemuState
+  , MutableHaemuState
+  , MVectorGetting
+  -- * Running Haemu actions
+  , runHaemuM
+  , execHaemuM
+  , evalHaemuM
   , registers
   , memory
+  -- * Constructing the initial state
   -- * Basic Haemu actions
-  , writeMemory
-  , readMemory
-  , writeRegister
-  , readRegister
+  , write
+  , access
   ) where
 
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.Reader
-import           Control.Monad.ST
-import           Data.Array.ST        (MArray, STUArray, readArray, thaw,
-                                       writeArray)
-import           Data.Array.Unboxed
-import           Data.Array.Unsafe    (unsafeFreeze)
+import Control.Monad.Primitive
+import qualified Data.Vector.Unboxed as V.I
+import qualified Data.Vector.Unboxed.Mutable as V.M
 
 -- | Holds the state for the Haemu monad. The type arguments are the register store type (r) and
 -- the memory store type (m).
@@ -33,6 +36,12 @@ data HaemuState r m = HaemuState
   , _memory    :: m -- ^ The state of the memory
   }
 
+-- | Immutable 'HaemuState'
+type ImmutableHaemuState r v = HaemuState (V.I.Vector r) (V.I.Vector v)
+
+-- | Mutable 'HaemuState' in the monad m.
+type MutableHaemuState m r v = HaemuState (V.M.MVector (PrimState m) r) (V.M.MVector (PrimState m) v)
+
 deriving instance (Show r, Show m) => Show (HaemuState r m)
 deriving instance (Eq r, Eq m) => Eq (HaemuState r m)
 
@@ -40,54 +49,69 @@ deriving instance (Eq r, Eq m) => Eq (HaemuState r m)
 makeLenses ''HaemuState
 
 -- | The haemu monad. The haemu monad manages a state of the registers and the memory. The type
--- arguments are a phantom data type s so that references to the memory or registers can't escape
--- the monad, the register type r, address type a, memory value type v and the type b of the value
--- in the monad.
-type HaemuM s r a v b = ReaderT (HaemuState (STUArray s Int r) (STUArray s a v)) (ST s) b
+-- arguments are a the state monad type m (IO or ST), the register type r and the memory value type
+-- v.
+type HaemuM m r v = ReaderT (MutableHaemuState m r v) m
 
--- | Convert a HaemuState with immutable arrays to a state with mutable arrays.
-thawState :: (Ix i, Ix j, Applicative f, MArray a' e f, MArray b' d f, IArray a e, IArray b d)
-          => HaemuState (a i e) (b j d) -> f (HaemuState (a' i e) (b' j d))
-thawState (HaemuState reg mem) = HaemuState <$> thaw reg <*> thaw mem
+-- | Convert an 'ImmutableHaemuState' to a 'MutableHaemuState'
+thawState :: (Applicative f, PrimMonad f, V.M.Unbox a, V.M.Unbox b)
+          => ImmutableHaemuState a b -> f (MutableHaemuState f a b)
+thawState = registers V.I.thaw >=> memory V.I.thaw
 
--- | Convert a HaemuState of mutable arrays to a state with immutable arrays.
-unsafeFreezeState :: (Ix i, Ix j, Applicative f, MArray a e f, MArray b d f, IArray a' e, IArray b' d)
-                  => HaemuState (a i e) (b j d) -> f (HaemuState (a' i e) (b' j d))
-unsafeFreezeState (HaemuState reg mem) = HaemuState <$> unsafeFreeze reg <*> unsafeFreeze mem
+-- | Unsafely convert a MutableHaemuState to an 'ImmutableHaemuState'. Make sure the mutable
+-- state isn't ever used again after calling this function!
+unsafeFreezeState :: (Applicative f, PrimMonad f, V.M.Unbox a, V.M.Unbox b)
+                  => MutableHaemuState f a b
+                  -> f (ImmutableHaemuState a b)
+unsafeFreezeState = registers V.I.unsafeFreeze >=> memory V.I.unsafeFreeze
 
--- | Run a Haemu computation in a ST monad, using the supplied 'HaemuState'.
-runHaemuM :: (Ix a, MArray (STUArray s) r (ST s), MArray (STUArray s) v (ST s), IArray c r, IArray c v)
-          => HaemuM s r a v b                       -- ^ The 'HaemuM' computation to run
-          -> HaemuState (c Int r) (c a v)           -- ^ The state to start with
-          -> ST s (b, HaemuState (c Int r) (c a v)) -- ^ A ST action returning the value of the
-                                                   --   'HaemuM' computation and the update State.
+-- | Given an initial state, run a Haemu computation in the underlying monad, returning the
+-- resulting value and state.
+runHaemuM :: (Applicative m, PrimMonad m, V.M.Unbox r, V.M.Unbox v)
+          => HaemuM m r v a
+          -> ImmutableHaemuState r v
+          -> m (a, ImmutableHaemuState r v)
 runHaemuM m s = do
   s' <- thawState s
-  r <- runReaderT m s'
-  sr <- unsafeFreezeState s'
-  return (r, sr)
+  (,) <$> runReaderT m s' <*> unsafeFreezeState s'
 
--- | @writeMemory pos val@ stores the value @val@ at position @pos@ in the memory. The current value
--- will be overwritten.
-writeMemory :: (Ix a, MArray (STUArray s) v (ST s)) => a -> v -> HaemuM s r a v ()
-writeMemory pos val = do
-  mem <- view memory
-  lift $ writeArray mem pos val
+-- | Same as 'runHaemuM', but this function only returns the final state and not the value of
+-- the computation.
+execHaemuM :: (Applicative m, PrimMonad m, V.M.Unbox r, V.M.Unbox v)
+           => HaemuM m r v a
+           -> ImmutableHaemuState r v
+           -> m (ImmutableHaemuState r v)
+execHaemuM m s = snd <$> runHaemuM m s
 
--- | @readMemory pos@ returns the value currently stored at position pos in the memory.
-readMemory :: (Ix a, MArray (STUArray s) v (ST s)) => a -> HaemuM s r a v v
-readMemory pos = do
-  mem <- view memory
-  lift $ readArray mem pos
+-- | Same as 'runHaemuM', but this function only returns the value of the computation and not the
+-- final state.
+evalHaemuM :: (Applicative m, PrimMonad m, V.M.Unbox r, V.M.Unbox v)
+           => HaemuM m r v a
+           -> ImmutableHaemuState r v
+           -> m a
+evalHaemuM m s = fst <$> runHaemuM m s
 
--- | @writeRegister reg val@ writes value val in register reg. Any previous value will be overwritten.
-writeRegister :: (MArray (STUArray s) r (ST s)) => Int -> r -> HaemuM s r a v ()
-writeRegister reg val = do
-  regs <- view registers
-  lift $ writeArray regs reg val
+-- | A getting of an mutable vector with values of type v out of the type s in the monad m.
+type MVectorGetting m s v = Getting (V.M.MVector (PrimState m) v) s (V.M.MVector (PrimState m) v)
 
--- | @readRegister reg@ returns the value of register reg.
-readRegister :: (MArray (STUArray s) r (ST s)) => Int -> HaemuM s r a v r
-readRegister reg = do
-  regs <- view registers
-  lift $ readArray regs reg
+-- | @write l pos val@ stores the value @val@ at position @pos@ in the field viewed by l of the
+-- 'HaemuState'.
+-- Example: @write memory 3 4@ writes the value 4 at position 3 in the memory.
+write :: (MonadTrans t, MonadReader s (t m), PrimMonad m, V.M.Unbox a)
+      => MVectorGetting m s a -> Int -> a -> t m ()
+write l pos val = do
+  x <- view l
+  lift $ V.M.write x pos val
+
+-- | @access l pos@ reads the value at @pos@ in the field viewed by the lens @l@.
+-- Example: @access registers 4@ reads the value of the register 4.
+access :: (MonadTrans t, MonadReader s (t m), PrimMonad m, V.M.Unbox a)
+       => MVectorGetting m s a -> Int -> t m a
+access l pos = do
+  x <- view l
+  lift $ V.M.read x pos
+
+-- | @defaultState vreg vmem reg mem@ constructs a 'HaemuState' with @reg@ registers filled
+-- with the default value @vreg@ and @mem@ memory places with the default value @vmem@.
+defaultState :: (V.M.Unbox r, V.M.Unbox v) => r -> v -> Int -> Int -> ImmutableHaemuState r v
+defaultState vreg vmem reg mem = HaemuState (V.I.replicate reg vreg) $ V.I.replicate mem vmem
