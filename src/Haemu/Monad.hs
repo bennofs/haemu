@@ -17,6 +17,7 @@ module Haemu.Monad
   , registers
   , memory
   -- * Constructing the initial state
+  , defaultState
   -- * Basic Haemu actions
   , write
   , access
