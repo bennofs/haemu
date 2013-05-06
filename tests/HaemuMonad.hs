@@ -6,6 +6,7 @@ import Control.Lens hiding (elements)
 import Control.Applicative
 import Test.QuickCheck
 import Test.Hspec
+import Data.Monoid
 import Control.Monad.ST
 import qualified Data.Vector.Unboxed as V
 import Data.Word
@@ -13,12 +14,12 @@ import Data.Word
 -- | A handy type alias
 type IntState = ImmutableHaemuState Int Int
 
+-- | Another one
+type NEIntState = HaemuState (NonEmptyVector Int) (NonEmptyVector Int)
+
 -- | QuickCheck modifier for generating non-empty vectors
 newtype NonEmptyVector a = NonEmptyVector (V.Vector a) deriving (Show)
 makeIso ''NonEmptyVector
-
--- | Another one
-type NEIntState = HaemuState (NonEmptyVector Int) (NonEmptyVector Int)
 
 -- | Type of a store. One can either store values in memory or in registers.
 data Store = Register | Memory deriving (Show)
@@ -36,7 +37,7 @@ instance (Arbitrary a, Arbitrary b) => Arbitrary (HaemuState a b) where
   arbitrary = HaemuState <$> arbitrary <*> arbitrary
 
 -- | Convert a 'Store' to a getting for that store type.
-storeToGetter :: Store -> (forall s. Getting s (HaemuState s s) s)
+storeToGetter :: Store -> Getting s (HaemuState s s) s
 storeToGetter Register = registers
 storeToGetter Memory = memory
 
@@ -75,9 +76,9 @@ withDefaultState :: (V.Unbox r, V.Unbox m)
                  => r -> m -> Positive (NonZero Word8) -> Positive (NonZero Word8)
                  -> (HaemuState (NonEmptyVector r) (NonEmptyVector m) -> b) -> b
 withDefaultState r m (Positive (NonZero rc)) (Positive (NonZero mc)) f =
-  f $ defaultState r m (fromEnum rc) (fromEnum mc)
-      & registers %~ view nonEmptyVector
-      & memory %~ view nonEmptyVector
+  f $ HaemuState
+      (view nonEmptyVector $ V.replicate (fromEnum rc) r)
+      (view nonEmptyVector $ V.replicate (fromEnum mc) m)
 
 -- | Eval a HaemuM using a ST monad and the supplied initial state.
 evalHaemuST :: (V.Unbox m, V.Unbox r)
@@ -111,19 +112,19 @@ describeHaemuMonad = describe "Haemu.Monad" $ do
   describe "write" $ do
 
     it "overwrites previous writes" $
-       property                       $ \(sn :: NEIntState) (v1 :: Int) (v2 :: Int) ->
-       withStore                      $ \s ->
-       withValidIndex sn s            $ \i ->
-       evalHaemuST (nonEmptyState sn) $
-       v2 ==| write s i v1 *> write s i v2 *> access s i
+       property                       $ \s (v1 :: Int) (v2 :: Int) ->
+       withStore                      $ \st ->
+       withValidIndex s st            $ \i ->
+       evalHaemuST (nonEmptyState s)  $
+       v2 ==| write st i v1 *> write st i v2 *> access st i
 
-    it "doesn't affect other locations" $
-       property                       $ \(sn :: NEIntState) (v1 :: Int) (v2 :: Int) ->
-       withStore                      $ \s  ->
-       withValidIndex sn s            $ \i1 ->
-       withValidIndex sn s            $ \i2 ->
-       evalHaemuST (nonEmptyState sn) $
-       i1 /= i2 ==>| v2 ==| write s i1 v2 *> write s i2 v1 *> access s i1
+    it "only changes the given position, for all other positions the value stays the same" $
+       property                       $ \s (v1 :: Int) (v2 :: Int) ->
+       withStore                      $ \st  ->
+       withValidIndex s st            $ \i1 ->
+       withValidIndex s st            $ \i2 ->
+       evalHaemuST (nonEmptyState s)  $
+       i1 /= i2 ==>| v2 ==| write st i1 v2 *> write st i2 v1 *> access st i1
 
   describe "access" $ do
 

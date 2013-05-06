@@ -16,8 +16,6 @@ module Haemu.Monad
   , evalHaemuM
   , registers
   , memory
-  -- * Constructing the initial state
-  , defaultState
   -- * Basic Haemu actions
   , write
   , access
@@ -26,6 +24,7 @@ module Haemu.Monad
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.Reader
+import Data.Monoid
 import Control.Monad.Primitive
 import qualified Data.Vector.Unboxed as V.I
 import qualified Data.Vector.Unboxed.Mutable as V.M
@@ -37,12 +36,19 @@ data HaemuState r m = HaemuState
   , _memory    :: m -- ^ The state of the memory
   }
 
+-- | We can make HaemuState an instance of Monoid if the register and memory types are monoids by
+-- distributing the monoid operations over the product type.
+instance (Monoid r, Monoid m) => Monoid (HaemuState r m) where
+  mempty = HaemuState mempty mempty
+  mappend (HaemuState r m) (HaemuState r' m') = HaemuState (r <> r') (m <> m')
+
 -- | Immutable 'HaemuState'
 type ImmutableHaemuState r v = HaemuState (V.I.Vector r) (V.I.Vector v)
 
 -- | Mutable 'HaemuState' in the monad m.
 type MutableHaemuState m r v = HaemuState (V.M.MVector (PrimState m) r) (V.M.MVector (PrimState m) v)
 
+-- Those instances are for testing
 deriving instance (Show r, Show m) => Show (HaemuState r m)
 deriving instance (Eq r, Eq m) => Eq (HaemuState r m)
 
@@ -111,8 +117,3 @@ access :: (MonadTrans t, MonadReader s (t m), PrimMonad m, V.M.Unbox a)
 access l pos = do
   x <- view l
   lift $ V.M.read x pos
-
--- | @defaultState vreg vmem reg mem@ constructs a 'HaemuState' with @reg@ registers filled
--- with the default value @vreg@ and @mem@ memory places with the default value @vmem@.
-defaultState :: (V.M.Unbox r, V.M.Unbox v) => r -> v -> Int -> Int -> ImmutableHaemuState r v
-defaultState vreg vmem reg mem = HaemuState (V.I.replicate reg vreg) $ V.I.replicate mem vmem
