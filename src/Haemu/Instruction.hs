@@ -36,9 +36,14 @@ sliced n m = lens t s
         t x = (x .&. mask) `shiftR` n
         s x v = (x .&. complement mask) .|. ((v `shiftL` n) .&. mask)
 
--- | Construct the control block of an instruction
-
 -- | Parse / serialize an instruction from / to a vector of Word16.
+-- Format of vector (if seen as one big chunk of memory):
+--   first 4 bits: count of datablocks (must match with the actual length)
+--   bits 4 - 8: register / value flags specifing whether the given parameter is a register or a value
+--   bits 8 - 16: condition. Used as a guard. If the guard doesn't match, the instruction is not executed.
+--   bits 16 - 20: optype. Instructions can have differnent types (like arithmetic or logical)
+--   bits 20 - 32: opcode. An per-optype unique indentifier for the instruction.
+--   bits 32 - end: Datablocks
 instruction :: Prism' (V.Vector Word16) Instruction
 instruction = prism' f t
   where f (Instruction ot oc df c d) = V.cons b1 $ V.cons b2 $ d
