@@ -2,10 +2,11 @@
 module Haemu.Instruction
   ( sliced
   , instruction
+  , datalength
+  , dataflags
   , condition
+  , optype
   , opcode
-  , size
-  , unitcode
   , dataBlock
   ) where
 
@@ -18,14 +19,14 @@ import Control.Applicative
 
 -- | An instruction consists of a 16 bits wide control block, a condition and the data.
 -- The control block format is:
---  - The first 4 bits are the number of additional data words
---  - The next 4 bits contain the unit number
---  - The last 8 bits contain the opcode
+--  - The first 4 bits contain number of additional data words
+--  - The next 4 bits are the register/value flags
+--  - The last 8 bits contain the condition
 -- The condition guard controls whether the instruction is executed or not, depending on the flags
 -- currenty set.
 data Instruction = Instruction
   { _controlBlock :: Word16
-  , _condition :: Word16
+  , _operationBlock :: Word16
   , _dataBlock :: V.Vector Word16
   } deriving (Show)
 makeLenses ''Instruction
@@ -42,7 +43,6 @@ sliced n m = lens t s
         s x v = (x .&. complement mask) .|. ((v `shiftL` n) .&. mask)
 
 -- | Parse / serialize an instruction from / to a vector of Word16.
--- instruction :: Prism' (V.Vector Word16) Instruction
 instruction :: Prism' (V.Vector Word16) Instruction
 instruction = prism' f t
   where f (Instruction c g d) = V.cons c $ V.cons g $ d
@@ -54,14 +54,23 @@ instruction = prism' f t
 int :: (Integral a, Integral b) => Iso' a b
 int = iso fromIntegral fromIntegral
 
--- | The opcode of an instruction.
+
+-- | The length of the data arguments of an instruction
+datalength :: Lens' Instruction Word8
+datalength = controlBlock . sliced 0 4 . int
+
+-- | The bits which indicate for each of the maximal 4 input operands of an instruction if this operand is a register or a value
+datflags :: Lens' Instruction Word8
+dataflags = controlBlock . sliced 4 4 . int
+
+-- | The condition which has to be true for the execution of an instruction
+condition :: Lens' Instruction Word8
+condition = controlBlock . sliced 8 8 . int
+
+-- | The operationtype of an instruction
+optype :: Lens' Instruction Word8
+optype = operrationBlock . sliced 0 4 . int
+
+-- | The operationcode of an instruction.
 opcode :: Lens' Instruction Word8
-opcode = controlBlock . sliced 8 8 . int
-
--- | The size of an instruction (in memory blocks)
-size :: Getter Instruction Word8
-size = controlBlock . sliced 0 4 . to (+2) . int -- Include size of control and codition block
-
--- | The unitcode of an instruction
-unitcode :: Lens' Instruction Word8
-unitcode = controlBlock . sliced 4 4 . int
+opcode = operationBlock . sliced 4 12 . int
