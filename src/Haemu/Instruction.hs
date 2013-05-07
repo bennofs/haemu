@@ -69,7 +69,7 @@ condition = controlBlock . sliced 8 8 . int
 
 -- | The operationtype of an instruction
 optype :: Lens' Instruction Word8
-optype = operrationBlock . sliced 0 4 . int
+optype = operationBlock . sliced 0 4 . int
 
 -- | The operationcode of an instruction.
 opcode :: Lens' Instruction Word8
