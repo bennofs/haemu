@@ -29,7 +29,12 @@ data Instruction = Instruction
   , _operationBlock :: Word16
   , _dataBlock :: V.Vector Word16
   } deriving (Show)
-makeLenses ''Instruction
+makeLensesFor [("_controlBlock", "controlBlock"), ("_operationBlock", "operationBlock")] ''Instruction
+
+-- | A lens for the data block of an instruction, taking care of updating the length of the data block.
+dataBlock :: Lens' Instruction (V.Vector Word16)
+dataBlock = lens _dataBlock $ \i n ->
+  i { _dataBlock = n } & controlBlock . sliced 0 4 . int .~ V.length n
 
 -- | A lens for a sliced part of some bits. @sliced n m@ views m bits, starting with bit n (where
 -- n = 0 starts with the first bit). The sliced part is readjusted, such that the first bit of the
@@ -56,7 +61,7 @@ int = iso fromIntegral fromIntegral
 
 
 -- | The length of the data arguments of an instruction
-datalength :: Lens' Instruction Word8
+datalength :: Getter Instruction Word8
 datalength = controlBlock . sliced 0 4 . int
 
 -- | The bits which indicate for each of the maximal 4 input operands of an instruction if this operand is a register or a value
