@@ -15,26 +15,15 @@ import Data.Bits
 import qualified Data.Vector.Unboxed as V
 import Control.Lens
 import Control.Monad
-import Control.Applicative
 
--- | An instruction consists of a 16 bits wide control block, a condition and the data.
--- The control block format is:
---  - The first 4 bits contain number of additional data words
---  - The next 4 bits are the register/value flags
---  - The last 8 bits contain the condition
--- The condition guard controls whether the instruction is executed or not, depending on the flags
--- currenty set.
 data Instruction = Instruction
-  { _controlBlock :: Word16
-  , _operationBlock :: Word16
+  { _optype :: Word8                -- ^  4 bits
+  , _opcode :: Word16               -- ^ 12 bits
+  , _dataflags :: Word8             -- ^  4 bits
+  , _condition :: Word8             -- ^  8 bits
   , _dataBlock :: V.Vector Word16
   } deriving (Show)
-makeLensesFor [("_controlBlock", "controlBlock"), ("_operationBlock", "operationBlock")] ''Instruction
-
--- | A lens for the data block of an instruction, taking care of updating the length of the data block.
-dataBlock :: Lens' Instruction (V.Vector Word16)
-dataBlock = lens _dataBlock $ \i n ->
-  i { _dataBlock = n } & controlBlock . sliced 0 4 . int .~ V.length n
+makeLenses ''Instruction
 
 -- | A lens for a sliced part of some bits. @sliced n m@ views m bits, starting with bit n (where
 -- n = 0 starts with the first bit). The sliced part is readjusted, such that the first bit of the
@@ -47,12 +36,24 @@ sliced n m = lens t s
         t x = (x .&. mask) `shiftR` n
         s x v = (x .&. complement mask) .|. ((v `shiftL` n) .&. mask)
 
+-- | Construct the control block of an instruction
+
 -- | Parse / serialize an instruction from / to a vector of Word16.
 instruction :: Prism' (V.Vector Word16) Instruction
 instruction = prism' f t
-  where f (Instruction c g d) = V.cons c $ V.cons g $ d
-        t v = Instruction <$> v ^? ix 0 <*> v ^? ix 1 <*> (V.drop 2 v <$ (valid v >>= guard))
-        valid v = (== fromIntegral (V.length (V.drop 2 v))) <$> v ^? _head . sliced 0 4
+  where f (Instruction ot oc df c d) = V.cons b1 $ V.cons b2 $ d
+          where b1 = 0 & sliced 0 4 . int .~ l & sliced 4 4 . int .~ df & sliced 8 8 . int .~ c
+                b2 = 0 & sliced 0 4 . int .~ ot & sliced 4 12 .~ oc
+                l = V.length d
+        t b = do
+          l <- b ^? ix 0 . sliced 0 4 . int
+          df <- b ^? ix 0 . sliced 4 4 . int
+          c <- b ^? ix 0 . sliced 8 8 . int
+          ot <- b ^? ix 1 . sliced 0 4 . int
+          oc <- b ^? ix 1 . sliced 4 12
+          let d = V.drop l b
+          guard $ (V.length d) == l
+          return $ Instruction ot oc df c d
 
 -- | An iso converting from one integral type to another one. Warning: This only a valid iso
 -- when no overflows or underflows happen.
@@ -60,22 +61,6 @@ int :: (Integral a, Integral b) => Iso' a b
 int = iso fromIntegral fromIntegral
 
 
--- | The length of the data arguments of an instruction
-datalength :: Getter Instruction Word8
-datalength = controlBlock . sliced 0 4 . int
-
--- | The bits which indicate for each of the maximal 4 input operands of an instruction if this operand is a register or a value
-dataflags :: Lens' Instruction Word8
-dataflags = controlBlock . sliced 4 4 . int
-
--- | The condition which has to be true for the execution of an instruction
-condition :: Lens' Instruction Word8
-condition = controlBlock . sliced 8 8 . int
-
--- | The operationtype of an instruction
-optype :: Lens' Instruction Word8
-optype = operationBlock . sliced 0 4 . int
-
--- | The operationcode of an instruction.
-opcode :: Lens' Instruction Word8
-opcode = operationBlock . sliced 4 12 . int
+-- | The length of the data attached to some instruction
+datalength :: Getter Instruction Int
+datalength = dataBlock . to V.length
