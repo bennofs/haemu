@@ -60,7 +60,7 @@ datalength :: Lens' Instruction Word8
 datalength = controlBlock . sliced 0 4 . int
 
 -- | The bits which indicate for each of the maximal 4 input operands of an instruction if this operand is a register or a value
-datflags :: Lens' Instruction Word8
+dataflags :: Lens' Instruction Word8
 dataflags = controlBlock . sliced 4 4 . int
 
 -- | The condition which has to be true for the execution of an instruction
@@ -69,7 +69,7 @@ condition = controlBlock . sliced 8 8 . int
 
 -- | The operationtype of an instruction
 optype :: Lens' Instruction Word8
-optype = operrationBlock . sliced 0 4 . int
+optype = operationBlock . sliced 0 4 . int
 
 -- | The operationcode of an instruction.
 opcode :: Lens' Instruction Word8
