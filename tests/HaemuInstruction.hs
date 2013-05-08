@@ -33,4 +33,4 @@ describeInstructionModule = do
   describe "optype is a lens" $ describeLens optype
   describe "condition is a lens" $ describeLens condition
   describe "dataflags is a lens" $ describeLens dataflags
-  desctibe "instruction is a prism" $ describePrism instruction
+  describe "instruction is a prism" $ describePrism instruction
