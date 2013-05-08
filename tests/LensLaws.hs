@@ -7,7 +7,7 @@ import Test.QuickCheck
 
 -- | Checks the laws that have to hold for a lens
 describeLens :: (Eq a, Eq s, Show a, Show s, Arbitrary s, Arbitrary a) => Lens' s a -> Spec
-describeLens l = describe "follows lens laws" $ do
+describeLens l = do
 
   it "gets back what you put in" $
      property $ \s a -> view l (set l a s) == a
@@ -20,7 +20,7 @@ describeLens l = describe "follows lens laws" $ do
 
 -- | Checks the laws that have to hold for an isomorphism
 describeIso :: (Eq a, Eq b, Show a, Show b, Arbitrary a, Arbitrary b) => Iso' a b -> Spec
-describeIso i = describe "follows the isomorphism laws" $ do
+describeIso i = do
 
   it "is the same as identity when composed with the inverse" $ do
     property $ \a -> review i (view i a) == a
@@ -30,7 +30,7 @@ describeIso i = describe "follows the isomorphism laws" $ do
 
 -- | Checks the laws that have to hold for a prism.
 describePrism :: (Eq s, Eq a, Show a, Show s, Arbitrary a, Arbitrary s) => Prism' s a -> Spec
-describePrism p = describe "follows the prism laws" $ do
+describePrism p = do
 
   it "gets back a value reviewed through it in a Just" $
     property $ \a -> (p # a) ^? p == Just a

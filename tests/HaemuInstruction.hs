@@ -29,8 +29,8 @@ instance Arbitrary Instruction where
 
 describeInstructionModule :: Spec
 describeInstructionModule = do
-  describeLens opcode
-  describeLens optype
-  describeLens condition
-  describeLens dataflags
-  describePrism instruction
+  describe "opcode is a lens" $ describeLens opcode
+  describe "optype is a lens" $ describeLens optype
+  describe "condition is a lens" $ describeLens condition
+  describe "dataflags is a lens" $ describeLens dataflags
+  desctibe "instruction is a prism" $ describePrism instruction
