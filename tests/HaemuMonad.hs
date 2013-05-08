@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes, TemplateHaskell, ScopedTypeVariables, FlexibleContexts, NoMonomorphismRestriction #-}
 module HaemuMonad where
 
+import Instances
 import Haemu.Monad
 import Control.Lens hiding (elements)
 import Control.Applicative
@@ -26,9 +27,6 @@ data Store = Register | Memory deriving (Show)
 
 instance Arbitrary Store where
   arbitrary = elements [Register, Memory]
-
-instance (Arbitrary a, V.Unbox a) => Arbitrary (V.Vector a) where
-  arbitrary = V.fromList <$> arbitrary
 
 instance (Arbitrary a, V.Unbox a) => Arbitrary (NonEmptyVector a) where
   arbitrary = (\(NonEmpty l) -> V.fromList l ^. nonEmptyVector) <$> arbitrary
@@ -85,6 +83,7 @@ evalHaemuST :: (V.Unbox m, V.Unbox r)
             => ImmutableHaemuState r m -> (forall s. HaemuM (ST s) r m a) -> a
 evalHaemuST s m = runST $ evalHaemuM m s
 
+describeHaemuMonad :: Spec
 describeHaemuMonad = describe "Haemu.Monad" $ do
 
   describe "runHaemuM" $ do

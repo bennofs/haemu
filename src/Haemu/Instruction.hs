@@ -22,8 +22,8 @@ data Instruction = Instruction
   , _opcode :: Word16               -- ^ 12 bits
   , _dataflags :: Word8             -- ^  4 bits
   , _condition :: Word8             -- ^  8 bits
-  , _dataBlock :: V.Vector Word16
-  } deriving (Show)
+  , _dataBlock :: V.Vector Word16   -- ^ Maximum length: 15
+  } deriving (Show, Eq)
 makeLenses ''Instruction
 
 -- | A lens for a sliced part of some bits. @sliced n m@ views m bits, starting with bit n (where
@@ -57,7 +57,7 @@ instruction = prism' f t
           c <- b ^? ix 0 . sliced 8 8 . int
           ot <- b ^? ix 1 . sliced 0 4 . int
           oc <- b ^? ix 1 . sliced 4 12
-          let d = V.drop l b
+          let d = V.drop 2 b
           guard $ (V.length d) == l
           return $ Instruction ot oc df c d
 
