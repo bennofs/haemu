@@ -2,6 +2,7 @@
 module Haemu.Instruction
   ( sliced
   , instruction
+  , Instruction(..)
   , datalength
   , dataflags
   , condition
