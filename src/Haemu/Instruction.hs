@@ -9,20 +9,27 @@ module Haemu.Instruction
   , optype
   , opcode
   , dataBlock
+  , Word12
   ) where
 
+import Data.Word.Odd (Word4, One, Zero, OddWord)
 import Data.Word
 import Data.Bits
 import qualified Data.Vector.Unboxed as V
 import Control.Lens
 import Control.Monad
 
+-- | The Word12 type synonym in the OddWord package is wrong. I sent a patch, but until
+-- it gets applied and uploaded to hackage we have to use this as a workaround.
+type Word12 = OddWord Word16 (One (One (Zero (Zero ())))) -- 12 = 1100 in binary
+
+-- | This represents an instruction as it is used throughout the program.
 data Instruction = Instruction
-  { _optype :: Word8                -- ^  4 bits
-  , _opcode :: Word16               -- ^ 12 bits
-  , _dataflags :: Word8             -- ^  4 bits
-  , _condition :: Word8             -- ^  8 bits
-  , _dataBlock :: V.Vector Word16   -- ^ Maximum length: 15
+  { _optype :: Word4
+  , _opcode :: Word12
+  , _dataflags :: Word4
+  , _condition :: Word8
+  , _dataBlock :: V.Vector Word16
   } deriving (Show, Eq)
 makeLenses ''Instruction
 
@@ -45,18 +52,19 @@ sliced n m = lens t s
 --   bits 16 - 20: optype. Instructions can have differnent types (like arithmetic or logical)
 --   bits 20 - 32: opcode. An per-optype unique indentifier for the instruction.
 --   bits 32 - end: Datablocks
+-- Warning: There may be at most 15 data blocks in the instruction for this to be a valid prism.
 instruction :: Prism' (V.Vector Word16) Instruction
 instruction = prism' f t
   where f (Instruction ot oc df c d) = V.cons b1 $ V.cons b2 $ d
           where b1 = 0 & sliced 0 4 . int .~ l & sliced 4 4 . int .~ df & sliced 8 8 . int .~ c
-                b2 = 0 & sliced 0 4 . int .~ ot & sliced 4 12 .~ oc
+                b2 = 0 & sliced 0 4 . int .~ ot & sliced 4 12 . int .~ oc
                 l = V.length d
         t b = do
           l <- b ^? ix 0 . sliced 0 4 . int
           df <- b ^? ix 0 . sliced 4 4 . int
           c <- b ^? ix 0 . sliced 8 8 . int
           ot <- b ^? ix 1 . sliced 0 4 . int
-          oc <- b ^? ix 1 . sliced 4 12
+          oc <- b ^? ix 1 . sliced 4 12 . int
           let d = V.drop 2 b
           guard $ (V.length d) == l
           return $ Instruction ot oc df c d

@@ -16,8 +16,8 @@ import qualified Data.Vector.Unboxed as V
 deriving instance Ord Instruction
 
 instance Arbitrary Instruction where
-  arbitrary = Instruction <$> b 4 <*> b 12 <*> b 4 <*> b 8 <*> (suchThat arbitrary $ (< 16) . V.length)
-    where b n = fromInteger <$> choose (0, 2 ^ n - 1)
+  arbitrary = Instruction <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+                          <*> arbitrary `suchThat` ((< 16) . V.length)
   shrink i = filter (/= i) $
     [ i & opcode %~ lower
     , i & optype %~ lower
