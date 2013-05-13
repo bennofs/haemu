@@ -9,6 +9,7 @@ module Haemu.Instruction
   , optype
   , opcode
   , dataBlock
+  , int
   ) where
 
 import Haemu.Types
