@@ -5,11 +5,14 @@ module Haemu.Types
   , Condition
   , Register
   , Address
+  , MemoryByte
   , Word12
+  , DataBlock
   ) where
 
 import Data.Word
 import Data.Word.Odd (Word4, OddWord, One, Zero)
+import qualified Data.Vector.Unboxed as V
 
 -- | The Word12 type synonym in the OddWord package is wrong. I sent a patch, but until
 -- it gets applied and uploaded to hackage we have to use this as a workaround.
@@ -20,4 +23,6 @@ type Opcode = Word12
 type Dataflags = Word4
 type Condition = Word8
 type Register = Word16
+type MemoryByte = Word16
 type Address = Word16
+type DataBlock = V.Vector MemoryByte

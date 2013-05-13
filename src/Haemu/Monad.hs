@@ -108,6 +108,8 @@ access = act . flip V.M.read
 write :: (PrimMonad m, V.M.Unbox a) => Int -> a -> Action m (V.M.MVector (PrimState m) a) ()
 write i a = act $ \v -> V.M.write v i a
 
+-- | @
+
 -- | Like 'perform' from lens, with the difference that it takes the source value for the lens from
 -- reader monad transformer layer around the monad the action runs in.
 hperform :: (MonadTrans t, Monad m, MonadReader a (t m)) => Acting m b a t1 b b1 -> t m b
