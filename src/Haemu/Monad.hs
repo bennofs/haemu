@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 module Haemu.Monad
@@ -9,24 +10,24 @@ module Haemu.Monad
   , HaemuState(..)
   , ImmutableHaemuState
   , MutableHaemuState
-  , MVectorGetting
   -- * Running Haemu actions
   , runHaemuM
   , execHaemuM
   , evalHaemuM
   , registers
   , memory
-  -- * Basic Haemu actions
-  , write
+  -- * Using the Haemu monad
   , access
+  , write
+  , hperform
   ) where
 
 import           Control.Applicative
 import           Control.Lens
+import           Control.Monad.Primitive
 import           Control.Monad.Reader
-import Data.Monoid
-import Control.Monad.Primitive
-import qualified Data.Vector.Unboxed as V.I
+import           Data.Monoid
+import qualified Data.Vector.Unboxed         as V.I
 import qualified Data.Vector.Unboxed.Mutable as V.M
 
 -- | Holds the state for the Haemu monad. The type arguments are the register store type (r) and
@@ -98,22 +99,16 @@ evalHaemuM :: (Applicative m, PrimMonad m, V.M.Unbox r, V.M.Unbox v)
            -> m a
 evalHaemuM m s = fst <$> runHaemuM m s
 
--- | A getting of an mutable vector with values of type v out of the type s in the monad m.
-type MVectorGetting m s v = Getting (V.M.MVector (PrimState m) v) s (V.M.MVector (PrimState m) v)
+-- | This is just a flipped version of Data.Vector.Unboxed.Mutable.read converted to a Getter,
+-- renamed to avoid the name clash with Prelude.
+access :: (PrimMonad m, V.M.Unbox a) => Int -> Action m (V.M.MVector (PrimState m) a) a
+access = act . flip V.M.read
 
--- | @write l pos val@ stores the value @val@ at position @pos@ in the field viewed by l of the
--- 'HaemuState'.
--- Example: @write memory 3 4@ writes the value 4 at position 3 in the memory.
-write :: (MonadTrans t, MonadReader s (t m), PrimMonad m, V.M.Unbox a)
-      => MVectorGetting m s a -> Int -> a -> t m ()
-write l pos val = do
-  x <- view l
-  lift $ V.M.write x pos val
+-- | This is just a flipped version of Data.Vector.Unboxed.Mutable.write converted to a Getter.
+write :: (PrimMonad m, V.M.Unbox a) => Int -> a -> Action m (V.M.MVector (PrimState m) a) ()
+write i a = act $ \v -> V.M.write v i a
 
--- | @access l pos@ reads the value at @pos@ in the field viewed by the lens @l@.
--- Example: @access registers 4@ reads the value of the register 4.
-access :: (MonadTrans t, MonadReader s (t m), PrimMonad m, V.M.Unbox a)
-       => MVectorGetting m s a -> Int -> t m a
-access l pos = do
-  x <- view l
-  lift $ V.M.read x pos
+-- | Like 'perform' from lens, with the difference that it takes the source value for the lens from
+-- reader monad transformer layer around the monad the action runs in.
+hperform :: (MonadTrans t, Monad m, MonadReader a (t m)) => Acting m b a t1 b b1 -> t m b
+hperform a = ask >>= lift . perform a

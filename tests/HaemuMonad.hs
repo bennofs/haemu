@@ -35,12 +35,12 @@ instance (Arbitrary a, Arbitrary b) => Arbitrary (HaemuState a b) where
   arbitrary = HaemuState <$> arbitrary <*> arbitrary
 
 -- | Convert a 'Store' to a getting for that store type.
-storeToGetter :: Store -> Getting s (HaemuState s s) s
+storeToGetter :: Store -> Getter (HaemuState s s) s
 storeToGetter Register = registers
 storeToGetter Memory = memory
 
 -- | Bind a function taking a store lens with 'Store' value.
-withStore :: ((forall s. Getting s (HaemuState s s) s) -> b) -> Store -> b
+withStore :: ((forall s. Getter (HaemuState s s) s) -> b) -> Store -> b
 withStore f st = f (storeToGetter st)
 
 -- | Extend a function taking a valid index ainto a function taking an arbitrary positive
@@ -62,12 +62,6 @@ nonEmptyState s = s & registers %~ review nonEmptyVector & memory %~ review nonE
 (==|) :: (Functor f, Eq a) => a -> f a -> f Bool
 (==|) = fmap . (==)
 infixr 3 ==|   -- (*>) is infixl 4
-
--- | (==>) combined with fmap
-(==>|) :: (Functor f) => Bool -> f Bool -> f Bool
-(==>|) False f = True <$ f
-(==>|) True f = f
-infixr 0 ==>|
 
 -- | 'defaultState' lifted to continuation-passing style (CPS) and with a NonEmptyVector wrapper.
 withDefaultState :: (V.Unbox r, V.Unbox m)
@@ -115,15 +109,15 @@ describeHaemuMonad = describe "Haemu.Monad" $ do
        withStore                      $ \st ->
        withValidIndex s st            $ \i ->
        evalHaemuST (nonEmptyState s)  $
-       v2 ==| write st i v1 *> write st i v2 *> access st i
+       v2 ==| hperform (st . write i v1) *> hperform (st . write i v2) *> hperform (st . access i)
 
     it "only changes the given position, for all other positions the value stays the same" $
-       property                       $ \s (v1 :: Int) (v2 :: Int) ->
-       withStore                      $ \st  ->
-       withValidIndex s st            $ \i1 ->
-       withValidIndex s st            $ \i2 ->
-       evalHaemuST (nonEmptyState s)  $
-       i1 /= i2 ==>| v2 ==| write st i1 v2 *> write st i2 v1 *> access st i1
+       property                                   $ \s (v1 :: Int) (v2 :: Int) ->
+       withStore                                  $ \st  ->
+       withValidIndex s st                        $ \i1 ->
+       withValidIndex s st                        $ \i2 ->
+       i1 /= i2 ==> evalHaemuST (nonEmptyState s)  $
+       v2 ==| hperform (st . write i1 v2) *> hperform (st . write i2 v1) *> hperform (st . access i1)
 
   describe "access" $ do
 
@@ -133,11 +127,11 @@ describeHaemuMonad = describe "Haemu.Monad" $ do
        withStore                      $ \s  ->
        withValidIndex sn s            $ \i  ->
        evalHaemuST (nonEmptyState sn) $
-       V.head (nonEmptyState sn ^. s) ==| access s i
+       V.head (nonEmptyState sn ^. s) ==| hperform (s . access i)
 
     it "returns the value of the last write if there exists one" $
       property                       $ \(sn :: NEIntState) (v :: Int) ->
       withStore                      $ \s ->
       withValidIndex sn s            $ \i ->
       evalHaemuST (nonEmptyState sn) $
-      v ==| write s i v *> access s i
+      v ==| hperform (s . write i v) *> hperform (s . access i)
