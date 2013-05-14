@@ -22,6 +22,7 @@ module Haemu.Monad
   , hperform
   ) where
 
+import           Haemu.Types
 import           Control.Applicative
 import           Control.Lens
 import           Control.Monad.Primitive
@@ -35,7 +36,7 @@ data HaemuState v = HaemuState
   { _inspoint  :: Address       -- ^ The state of the instruction pointer
   , _flags     :: Flags         -- ^ The state of the flag register
   , _registers :: v Register    -- ^ The state of the registers
-  , _memory    :: v MemmoryByte -- ^ The state of the memory
+  , _memory    :: v MemoryByte -- ^ The state of the memory
   }
 
 -- | Immutable 'HaemuState'
