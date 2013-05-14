@@ -46,8 +46,8 @@ type ImmutableHaemuState = HaemuState V.I.Vector
 type MutableHaemuState m = HaemuState (V.M.MVector (PrimState m))
 
 -- Those instances are for testing
-deriving instance Show HaemuState v
-deriving instance Eq HaemuState v
+deriving instance Show (HaemuState v)
+deriving instance Eq (HaemuState v)
 
 -- Create lenses for our state data type
 makeLenses ''HaemuState
