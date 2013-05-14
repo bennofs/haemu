@@ -14,6 +14,4 @@ import           Haemu.Types             as X
 -- Units do not share the opcode namespace, they can all have there individual opcodes. (for example,
 -- there can be multiple units that have an opcode 0).
 data Unit l m = Unit
-  { runInstruction :: Opcode -> Dataflags -> V.Vector MemoryByte
-                   -> EMT l (HaemuM m Register MemoryByte) ()
-  }
+  { runInstruction :: Opcode -> Dataflags -> V.Vector MemoryByte -> EMT l (HaemuM m) () }

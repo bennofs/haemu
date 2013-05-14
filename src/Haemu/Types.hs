@@ -4,10 +4,11 @@ module Haemu.Types
   , Dataflags
   , Condition
   , Register
+  , Flags
   , Address
   , MemoryByte
-  , Word12
   , DataBlock
+  , Word12
   ) where
 
 import Data.Word
@@ -23,6 +24,7 @@ type Opcode = Word12
 type Dataflags = Word4
 type Condition = Word8
 type Register = Word16
+type Flags = Word32
 type MemoryByte = Word16
 type Address = Word32
 type DataBlock = V.Vector MemoryByte
