@@ -36,14 +36,14 @@ data HaemuState v = HaemuState
   { _inspoint  :: Address       -- ^ The state of the instruction pointer
   , _flags     :: Flags         -- ^ The state of the flag register
   , _registers :: v Register    -- ^ The state of the registers
-  , _memory    :: v MemoryByte -- ^ The state of the memory
+  , _memory    :: v MemoryByte  -- ^ The state of the memory
   }
 
 -- | Immutable 'HaemuState'
 type ImmutableHaemuState = HaemuState V.I.Vector
 
 -- | Mutable 'HaemuState' in the monad m.
-type MutableHaemuState m = HaemuState V.M.MVector (PrimState m)
+type MutableHaemuState m = HaemuState (V.M.MVector (PrimState m))
 
 -- Those instances are for testing
 deriving instance Show HaemuState v
@@ -54,7 +54,7 @@ makeLenses ''HaemuState
 
 -- | The haemu monad. The haemu monad manages a state of the registers and the memory. The type
 -- argument is the state monad type m (IO or ST).
-type HaemuM m = ReaderT (MutableHaemuState m ) m
+type HaemuM m = ReaderT (MutableHaemuState m) m
 
 -- | Convert an 'ImmutableHaemuState' to a 'MutableHaemuState'
 thawState :: (Applicative f, PrimMonad f)
