@@ -24,5 +24,5 @@ type Dataflags = Word4
 type Condition = Word8
 type Register = Word16
 type MemoryByte = Word16
-type Address = Word16
+type Address = Word32
 type DataBlock = V.Vector MemoryByte

@@ -26,7 +26,7 @@ data Instruction = Instruction
   , _opcode :: Opcode
   , _dataflags :: Dataflags
   , _condition :: Condition
-  , _dataBlock :: V.Vector Word16
+  , _dataBlock :: DataBlock
   } deriving (Show, Eq)
 makeLenses ''Instruction
 
