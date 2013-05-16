@@ -1,80 +1,62 @@
-{-# LANGUAGE RankNTypes, TemplateHaskell, ScopedTypeVariables, FlexibleContexts, NoMonomorphismRestriction #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts          #-}
+{-# LANGUAGE FlexibleInstances         #-}
+{-# LANGUAGE FunctionalDependencies    #-}
+{-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE RankNTypes                #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE TypeFamilies              #-}
 module HaemuMonad where
 
-import Instances
-import Haemu.Monad
-import Control.Lens hiding (elements)
-import Control.Applicative
-import Test.QuickCheck
-import Test.Hspec
-import Data.Monoid
-import Control.Monad.ST
+import           Control.Applicative
+import           Control.Lens        hiding (elements)
+import           Control.Monad.ST
+import           Data.Monoid
 import qualified Data.Vector.Unboxed as V
-import Data.Word
+import           Data.Word
+import           Haemu.Monad
+import           Haemu.Types
+import           Instances
+import           Test.Hspec
+import           Test.QuickCheck
 
--- | A handy type alias
-type IntState = ImmutableHaemuState Int Int
+instance Arbitrary (HaemuState Immutable) where
+  arbitrary = HaemuState <$> arbitrary <*> arbitrary <*> arbitrary
 
--- | Another one
-type NEIntState = HaemuState (NonEmptyVector Int) (NonEmptyVector Int)
+data Memory = Memory
+data Registers = Registers
 
--- | QuickCheck modifier for generating non-empty vectors
-newtype NonEmptyVector a = NonEmptyVector (V.Vector a) deriving (Show)
-makeIso ''NonEmptyVector
+class CloneStore s a | s -> a where
+  cloneStore :: s -> Getter (HaemuState i) (ImmOrMut i (V.Vector a))
 
--- | Type of a store. One can either store values in memory or in registers.
-data Store = Register | Memory deriving (Show)
+instance CloneStore Memory MemoryByte where cloneStore _ = memory
+instance CloneStore Registers Register where cloneStore _ = registers
 
-instance Arbitrary Store where
-  arbitrary = elements [Register, Memory]
+-- | Call a function once using registers and second using memory, combining the results with (.&&.) from QuickCheck.
+withStore :: (forall s. forall a. (CloneStore s a, Arbitrary a, Show a, Eq a, V.Unbox a) => s -> Property) -> Property
+withStore f = f Memory .&&. f Registers
 
-instance (Arbitrary a, V.Unbox a) => Arbitrary (NonEmptyVector a) where
-  arbitrary = (\(NonEmpty l) -> V.fromList l ^. nonEmptyVector) <$> arbitrary
-
-instance (Arbitrary a, Arbitrary b) => Arbitrary (HaemuState a b) where
-  arbitrary = HaemuState <$> arbitrary <*> arbitrary
-
--- | Convert a 'Store' to a getting for that store type.
-storeToGetter :: Store -> Getter (HaemuState s s) s
-storeToGetter Register = registers
-storeToGetter Memory = memory
-
--- | Bind a function taking a store lens with 'Store' value.
-withStore :: ((forall s. Getter (HaemuState s s) s) -> b) -> Store -> b
-withStore f st = f (storeToGetter st)
-
--- | Extend a function taking a valid index ainto a function taking an arbitrary positive
+-- | Extend a function taking a valid index into a function taking an arbitrary positive
 -- integer.
-withValidIndex :: (V.Unbox s) => HaemuState (NonEmptyVector s) (NonEmptyVector s)
-               -> Getting (V.Vector s) (ImmutableHaemuState s s) (V.Vector s)
-               -> (Int -> b)
-               -> (Positive Int -> b)
-withValidIndex st s f (Positive n) = f n'
-  where l = V.length $ nonEmptyState st ^. s
+withValidIndex :: (V.Unbox s, Testable b) => HaemuState Immutable -> Getting (V.Vector s) (HaemuState Immutable) (V.Vector s) -> (Int -> b) -> NonNegative Int -> Property
+withValidIndex st s f (NonNegative n) = V.length (st ^. s) /= 0 ==> f n'
+  where l = V.length $ st ^. s
         n' = n `rem` l
-
--- | Remove the NonEmptyVector wrapper from a 'HaemuState'.
-nonEmptyState :: (V.Unbox a, V.Unbox b)
-              => HaemuState (NonEmptyVector a) (NonEmptyVector b) -> ImmutableHaemuState a b
-nonEmptyState s = s & registers %~ review nonEmptyVector & memory %~ review nonEmptyVector
 
 -- | (==) combined with fmap
 (==|) :: (Functor f, Eq a) => a -> f a -> f Bool
 (==|) = fmap . (==)
 infixr 3 ==|   -- (*>) is infixl 4
 
--- | 'defaultState' lifted to continuation-passing style (CPS) and with a NonEmptyVector wrapper.
-withDefaultState :: (V.Unbox r, V.Unbox m)
-                 => r -> m -> Positive (NonZero Word8) -> Positive (NonZero Word8)
-                 -> (HaemuState (NonEmptyVector r) (NonEmptyVector m) -> b) -> b
-withDefaultState r m (Positive (NonZero rc)) (Positive (NonZero mc)) f =
-  f $ HaemuState
-      (view nonEmptyVector $ V.replicate (fromEnum rc) r)
-      (view nonEmptyVector $ V.replicate (fromEnum mc) m)
+-- | 'defaultState' lifted to continuation-passing style (CPS).
+withDefaultState :: Register -> MemoryByte -> Positive Word8 -> Positive Word8
+                 -> (HaemuState Immutable -> b) -> b
+withDefaultState r m (Positive rc) (Positive mc) f =
+  f $ HaemuState 0 (V.replicate (fromEnum rc) r) (V.replicate (fromEnum mc) m)
 
 -- | Eval a HaemuM using a ST monad and the supplied initial state.
-evalHaemuST :: (V.Unbox m, V.Unbox r)
-            => ImmutableHaemuState r m -> (forall s. HaemuM (ST s) r m a) -> a
+evalHaemuST :: HaemuState Immutable -> (forall s. HaemuM (ST s) a) -> a
 evalHaemuST s m = runST $ evalHaemuM m s
 
 describeHaemuMonad :: Spec
@@ -83,55 +65,60 @@ describeHaemuMonad = describe "Haemu.Monad" $ do
   describe "runHaemuM" $ do
 
     it "returns the argument of the last 'return' as first tuple value" $
-       property $ \(s :: IntState) (v :: Int) ->
+       property $ \s (v :: Int) ->
        runST (fst <$> runHaemuM (return v) s) == v
 
     it "returns the initial state if no modifications are made as second tuple value" $
-       property $ \(s :: IntState) ->
+       property $ \s ->
        runST (snd <$> runHaemuM (return ()) s) == s
 
-  describe "execHaemuM" $ do
+  describe "execHaemuM" $
 
     it "returns the same value as the second element of runHaemuM's return value" $
-       property $ \(s :: IntState) ->
+       property $ \s ->
        runST $ (==) . snd <$> runHaemuM (return ()) s <*> execHaemuM (return ()) s
 
-  describe "evalHaemuM" $ do
+  describe "evalHaemuM" $
 
     it "returns the same value as the first element of runHaemuM's return value" $
-       property $ \(s :: IntState) (v :: Int) ->
+       property $ \s (v :: Int) ->
        runST $ (==) . fst <$> runHaemuM (return v) s <*> evalHaemuM (return v) s
 
-  describe "write" $ do
+  describe "iwrite" $ do
 
-    it "overwrites previous writes" $
-       property                       $ \s (v1 :: Int) (v2 :: Int) ->
-       withStore                      $ \st ->
-       withValidIndex s st            $ \i ->
-       evalHaemuST (nonEmptyState s)  $
-       v2 ==| hperform (st . write i v1) *> hperform (st . write i v2) *> hperform (st . access i)
+    it "overwrites previous writes"       $
+       property                           $ \s  ->
+       withStore                          $ \st ->
+       property                           $ \v1 v2 ->
+       withValidIndex s (cloneStore st)   $ \i  ->
+       evalHaemuST s                      $
+       ($ (cloneStore st, cloneStore st)) $ \(st1, st2) ->
+       Just v2 ==| hperform (st1 . iwrite i v1) *> hperform (st1 . iwrite i v2) *> htryuse (st2 . iaccess i)
 
     it "only changes the given position, for all other positions the value stays the same" $
-       property                                   $ \s (v1 :: Int) (v2 :: Int) ->
-       withStore                                  $ \st  ->
-       withValidIndex s st                        $ \i1 ->
-       withValidIndex s st                        $ \i2 ->
-       i1 /= i2 ==> evalHaemuST (nonEmptyState s)  $
-       v2 ==| hperform (st . write i1 v2) *> hperform (st . write i2 v1) *> hperform (st . access i1)
+       property                           $ \s  ->
+       withStore                          $ \st ->
+       property                           $ \v1 v2 ->
+       withValidIndex s (cloneStore st)   $ \i1 ->
+       withValidIndex s (cloneStore st)   $ \i2 ->
+       i1 /= i2 ==> evalHaemuST s          $
+       ($ (cloneStore st, cloneStore st)) $ \(st1, st2) ->
+       Just v2 ==| hperform (st1 . iwrite i1 v2) *> hperform (st1 . iwrite i2 v1) *> htryuse (st2 . iaccess i1)
 
-  describe "access" $ do
+  describe "iaccess" $ do
 
     it "returns the initial state if no write to that position happened already" $
-       property                       $ \(r :: Int) (v :: Int) rc vc ->
-       withDefaultState r v rc vc     $ \sn ->
-       withStore                      $ \s  ->
-       withValidIndex sn s            $ \i  ->
-       evalHaemuST (nonEmptyState sn) $
-       V.head (nonEmptyState sn ^. s) ==| hperform (s . access i)
+       withStore                          $ \s  ->
+       property                           $ \r v rc vc ->
+       withDefaultState r v rc vc         $ \sn ->
+       withValidIndex sn (cloneStore s)   $ \i  ->
+       evalHaemuST sn                     $
+       (Just $ V.head $ sn ^. cloneStore s) ==| htryuse (cloneStore s . iaccess i)
 
-    it "returns the value of the last write if there exists one" $
-      property                       $ \(sn :: NEIntState) (v :: Int) ->
-      withStore                      $ \s ->
-      withValidIndex sn s            $ \i ->
-      evalHaemuST (nonEmptyState sn) $
-      v ==| hperform (s . write i v) *> hperform (s . access i)
+    it "returns the value of the last iwrite if there exists one" $
+      property                            $ \sn ->
+      withStore                           $ \s  ->
+      property                            $ \v  ->
+      withValidIndex sn (cloneStore s)    $ \i  ->
+      evalHaemuST sn                      $
+      Just v ==| hperform (cloneStore s . iwrite i v) *> htryuse (cloneStore s . iaccess i)
