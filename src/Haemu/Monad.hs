@@ -135,11 +135,9 @@ write a = act (writeRef ?? a)
 
 -- | Like 'perform' from lens, with the difference that it takes the source value for the lens from
 -- reader monad transformer layer around the monad the action runs in.
-hperform :: (Monad (t' m), Monad m, MonadTrans t, MonadTrans t', MonadReader a (t (t' m))) => Acting m b a u b c -> t (t' m) b
+hperform :: (Monad (t' m), Monad m, MonadTrans t, MonadTrans t', MonadReader a (t (t' m))) => Acting m b a b -> t (t' m) b
 hperform a = ask >>= lift . lift . perform a
 
 -- | Returns the first element of a monadic fold using the reader as the input to the monadic fold.
 -- If the fold is empty, it returns Nothing. This is to '(^!?)' like 'hperform' is to 'perform'
--- htryyuse :: (MonadTrans t, Monad m, MonadReader a (t m))
--- htryuse :: (Monad m, MonadTrans t, MonadReader a (t m)) => Acting m (Leftmost a1) a t1 a1 b -> t m (Maybe a1)
 htryuse f = ask >>= lift . lift . (^!? f)
