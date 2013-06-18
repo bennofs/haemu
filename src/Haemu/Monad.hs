@@ -135,7 +135,6 @@ write a = act (writeRef ?? a)
 
 -- | Like 'perform' from lens, with the difference that it takes the source value for the lens from
 -- reader monad transformer layer around the monad the action runs in.
-hperform :: (Monad (t' m), Monad m, MonadTrans t, MonadTrans t', MonadReader a (t (t' m))) => Acting m b a b -> t (t' m) b
 hperform a = ask >>= lift . lift . perform a
 
 -- | Returns the first element of a monadic fold using the reader as the input to the monadic fold.
