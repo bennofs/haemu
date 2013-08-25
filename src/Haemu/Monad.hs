@@ -65,15 +65,15 @@ type instance ImmOrMut (Mutable m) (OddWord a n) = Ref m (OddWord a n)
 
 -- | Holds the state for the Haemu monad. The type parameter i determines whether to use mutable or
 -- immutable fields.
-data HaemuState v = HaemuState
-  { _flags     :: ImmOrMut v Flags                 -- ^ The state of the flag register
-  , _registers :: ImmOrMut v (V.I.Vector Register) -- ^ The state of the registers
-  , _memory    :: ImmOrMut v DataBlock             -- ^ The state of the memory
+data HaemuState i = HaemuState
+  { _flags     :: ImmOrMut i Flags                 -- ^ The state of the flag register
+  , _registers :: ImmOrMut i (V.I.Vector Register) -- ^ The state of the registers
+  , _memory    :: ImmOrMut i DataBlock             -- ^ The state of the memory
   }
 
 -- Those instances are for testing
-deriving instance (Show (ImmOrMut v DataBlock), Show (ImmOrMut v Flags)) => Show (HaemuState v)
-deriving instance (Eq (ImmOrMut v DataBlock), Eq (ImmOrMut v Flags)) => Eq (HaemuState v)
+deriving instance (Show (ImmOrMut i DataBlock), Show (ImmOrMut i Flags)) => Show (HaemuState i)
+deriving instance (Eq (ImmOrMut i DataBlock), Eq (ImmOrMut i Flags)) => Eq (HaemuState i)
 
 -- Create lenses for our state data type
 makeLenses ''HaemuState
